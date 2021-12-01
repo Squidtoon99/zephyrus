@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["zephyrus"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.56.1/core/fmt/trait.Debug.html\" title=\"trait core::fmt::Debug\">Debug</a> for <a class=\"enum\" href=\"zephyrus/parse/enum.SlashParseError.html\" title=\"enum zephyrus::parse::SlashParseError\">SlashParseError</a>","synthetic":false,"types":["zephyrus::parse::SlashParseError"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

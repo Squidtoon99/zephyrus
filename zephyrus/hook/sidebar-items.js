@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["AfterHook","A hook executed after command execution."],["BeforeHook","A hook executed before command execution."]]});

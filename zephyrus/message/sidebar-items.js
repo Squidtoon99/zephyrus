@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["Message","A wrapper around twilight’s message adding a few convenience methods."]]});

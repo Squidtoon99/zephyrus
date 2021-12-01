@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["SlashContext","Framework context given to all command functions, this struct contains all the necessary items to respond the interaction and access shared data."]]});

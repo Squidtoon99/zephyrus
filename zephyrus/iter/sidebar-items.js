@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["DataIterator","An iterator used to iterate through slash command options."]]});

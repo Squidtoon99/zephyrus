@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["zephyrus"] = [{"text":"impl&lt;'a, D&gt; <a class=\"trait\" href=\"https://doc.rust-lang.org/1.56.1/core/clone/trait.Clone.html\" title=\"trait core::clone::Clone\">Clone</a> for <a class=\"struct\" href=\"zephyrus/context/struct.SlashContext.html\" title=\"struct zephyrus::context::SlashContext\">SlashContext</a>&lt;'a, D&gt;","synthetic":false,"types":["zephyrus::context::SlashContext"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

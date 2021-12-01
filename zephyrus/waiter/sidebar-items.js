@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["WaiterReceiver","A receiver waiting to a component interaction."]]});

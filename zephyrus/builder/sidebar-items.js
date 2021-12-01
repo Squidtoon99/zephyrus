@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["WrappedClient","A wrapper around twilight’s http client allowing the user to decide how to provide it to the framework."]],"struct":[["FrameworkBuilder","A builder used to set all options before framework initialization."]]});

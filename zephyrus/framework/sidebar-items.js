@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["Framework","The framework used to dispatch slash commands."]]});

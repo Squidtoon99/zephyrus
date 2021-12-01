@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["zephyrus"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.56.1/core/future/future/trait.Future.html\" title=\"trait core::future::future::Future\">Future</a> for <a class=\"struct\" href=\"zephyrus/waiter/struct.WaiterReceiver.html\" title=\"struct zephyrus::waiter::WaiterReceiver\">WaiterReceiver</a>","synthetic":false,"types":["zephyrus::waiter::WaiterReceiver"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
