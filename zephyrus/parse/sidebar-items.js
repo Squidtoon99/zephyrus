@@ -1,1 +1,1 @@
-initSidebarItems({"enum":[["SlashParseError","The errors which can be returned from Parse parse function."]],"trait":[["Parse","The core trait of this framework, it is used to parse all command arguments"]]});
+initSidebarItems({"enum":[["ParseError","The errors which can be returned from Parse parse function."]],"trait":[["Parse","The core trait of this framework, it is used to parse all command arguments"]]});
