@@ -1,11 +1,11 @@
 use crate::{
-    argument::CommandArgument, context::SlashContext, twilight_exports::Permissions, BoxFuture,
+    argument::CommandArgument, context::SlashContext, twilight_exports::{Permissions, InteractionResponse}, BoxFuture,
 };
 use std::collections::HashMap;
 use std::error::Error;
 
 /// The result of a command execution.
-pub type CommandResult = Result<(), Box<dyn Error + Send + Sync>>;
+pub type CommandResult = Result<InteractionResponse, Box<dyn Error + Send + Sync>>;
 /// A pointer to a command function.
 pub(crate) type CommandFun<D> = for<'a> fn(&'a SlashContext<D>) -> BoxFuture<'a, CommandResult>;
 /// A map of [commands](self::Command).
