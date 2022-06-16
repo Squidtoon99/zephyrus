@@ -47,7 +47,7 @@ pub struct SlashContext<'a, D> {
     pub interaction_client: InteractionClient<'a>,
     /// The data shared across the framework.
     pub data: &'a D,
-    waiters: &'a Mutex<Vec<WaiterSender>>,
+    pub waiters: &'a Mutex<Vec<WaiterSender>>,
     /// The interaction itself.
     pub interaction: ApplicationCommand,
 }
