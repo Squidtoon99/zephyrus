@@ -47,7 +47,6 @@ pub struct SlashContext<'a, D> {
     pub interaction_client: InteractionClient<'a>,
     /// The data shared across the framework.
     pub data: &'a D,
-    pub waiters: &'a Mutex<Vec<WaiterSender>>,
     /// The interaction itself.
     pub interaction: ApplicationCommand,
 }
@@ -59,7 +58,6 @@ impl<'a, D> Clone for SlashContext<'a, D> {
             application_id: self.application_id,
             interaction_client: self.http_client.inner().interaction(self.application_id),
             data: &self.data,
-            waiters: &self.waiters,
             interaction: self.interaction.clone(),
         }
     }
@@ -71,7 +69,6 @@ impl<'a, D> SlashContext<'a, D> {
         http_client: &'a WrappedClient,
         application_id: Id<ApplicationMarker>,
         data: &'a D,
-        waiters: &'a Mutex<Vec<WaiterSender>>,
         interaction: ApplicationCommand,
     ) -> Self {
         let interaction_client = http_client.inner().interaction(application_id);
@@ -80,7 +77,6 @@ impl<'a, D> SlashContext<'a, D> {
             application_id,
             interaction_client,
             data,
-            waiters,
             interaction,
         }
     }
@@ -128,18 +124,5 @@ impl<'a, D> SlashContext<'a, D> {
             .model()
             .await
             .map(|msg| Message::new(&self, msg))?)
-    }
-
-    /// Waits for a component interaction which satisfies the given predicate.
-    pub fn wait_component<F>(&self, fun: F) -> WaiterReceiver
-    where
-        F: Fn(&MessageComponentInteraction) -> bool + Send + 'static,
-    {
-        let (sender, receiver) = WaiterSender::new(fun);
-        {
-            let mut lock = self.waiters.lock();
-            lock.push(sender);
-        }
-        receiver
     }
 }
