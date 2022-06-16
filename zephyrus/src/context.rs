@@ -90,39 +90,9 @@ impl<'a, D> SlashContext<'a, D> {
     ///
     /// When this method is used [update_response](Self::update_response) has to be used to edit the response.
     pub async fn acknowledge(&self) -> CommandResult {
-        self.interaction_client
-            .create_response(
-                self.interaction.id,
-                &self.interaction.token,
-                &InteractionResponse {
-                    kind: InteractionResponseType::DeferredChannelMessageWithSource,
-                    data: None,
-                },
-            )
-            .exec()
-            .await?;
-
-        Ok(())
-    }
-
-    /// Updates the sent interaction, this method is a shortcut to twilight's
-    /// [update_interaction_original](InteractionClient::update_response)
-    /// but http is automatically provided.
-    pub async fn update_response<F>(
-        &'a self,
-        fun: F,
-    ) -> Result<Message<'a, D>, Box<dyn std::error::Error + Send + Sync>>
-    where
-        F: FnOnce(UpdateResponse<'a>) -> UpdateResponse<'a>,
-    {
-        let update = fun(self
-            .interaction_client
-            .update_response(&self.interaction.token));
-        Ok(update
-            .exec()
-            .await?
-            .model()
-            .await
-            .map(|msg| Message::new(&self, msg))?)
+        Ok(InteractionResponse {
+            kind: InteractionResponseType::DeferredChannelMessageWithSource,
+                    data: None
+        })
     }
 }

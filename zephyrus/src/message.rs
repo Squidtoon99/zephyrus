@@ -1,5 +1,5 @@
 use crate::twilight_exports::Message as TwilightMessage;
-use crate::{context::SlashContext, waiter::WaiterReceiver};
+use crate::{context::SlashContext};
 
 /// A wrapper around twilight's [message](TwilightMessage)
 /// adding a few convenience methods.
@@ -28,11 +28,5 @@ impl<'a, T> Message<'a, T> {
             inner: msg,
             context,
         }
-    }
-    /// Waits for a component interaction, this method is a shortcut to
-    /// [wait_component](SlashContext::wait_component).
-    pub fn wait_component(&self) -> WaiterReceiver {
-        let id = self.inner.id;
-        self.context.wait_component(move |f| f.message.id == id)
     }
 }
