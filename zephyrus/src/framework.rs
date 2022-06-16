@@ -247,7 +247,6 @@ impl<D> Framework<D> {
             &self.http_client,
             self.application_id,
             &self.data,
-            &self.waiters,
             interaction,
         );
 
