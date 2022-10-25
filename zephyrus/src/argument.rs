@@ -1,5 +1,15 @@
 use crate::hook::AutocompleteHook;
 use crate::twilight_exports::*;
+use twilight_model::application::command::CommandOptionValue;
+use crate::parse::Parse;
+
+/// The constraints the arguments impose to the user.
+/// This is normally provided by implementing [parse](crate::parse::Parse) into a type.
+#[derive(Copy, Clone, Default)]
+pub struct ArgumentLimits {
+    pub min: Option<CommandOptionValue>,
+    pub max: Option<CommandOptionValue>
+}
 
 /// A command argument.
 pub struct CommandArgument<D> {
@@ -11,21 +21,20 @@ pub struct CommandArgument<D> {
     pub required: bool,
     /// The type this argument has.
     pub kind: CommandOptionType,
-    /// A function that allows to set specific options to the command, disabling arbitrary values.
-    pub choices_fn: Box<dyn Fn() -> Option<Vec<CommandOptionChoice>> + Send + Sync>,
+    /// The input options allowed to choose from in this command, only valid if it is [Some](Some)
+    pub choices: Option<Vec<CommandOptionChoice>>,
+    /// The input limits of this argument.
+    pub limits: Option<ArgumentLimits>,
     /// A function used to autocomplete fields.
     pub autocomplete: Option<AutocompleteHook<D>>,
 }
 
 impl<D> CommandArgument<D> {
-    fn choices(&self) -> Vec<CommandOptionChoice> {
-        (self.choices_fn)().unwrap_or_default()
-    }
     pub fn as_option(&self) -> CommandOption {
         match self.kind {
             CommandOptionType::String => CommandOption::String(ChoiceCommandOptionData {
                 autocomplete: self.autocomplete.is_some(),
-                choices: self.choices(),
+                choices: self.choices.clone().unwrap_or_default(),
                 description: self.description.to_string(),
                 name: self.name.to_string(),
                 required: self.required,
@@ -33,8 +42,10 @@ impl<D> CommandArgument<D> {
             }),
             CommandOptionType::Integer => CommandOption::Integer(NumberCommandOptionData {
                 autocomplete: self.autocomplete.is_some(),
-                choices: self.choices(),
+                choices: self.choices.clone().unwrap_or_default(),
                 description: self.description.to_string(),
+                max_value: self.limits.unwrap_or_default().max,
+                min_value: self.limits.unwrap_or_default().min,
                 name: self.name.to_string(),
                 required: self.required,
                 ..Default::default()
@@ -72,8 +83,10 @@ impl<D> CommandArgument<D> {
             }),
             CommandOptionType::Number => CommandOption::Number(NumberCommandOptionData {
                 autocomplete: self.autocomplete.is_some(),
-                choices: self.choices(),
+                choices: self.choices.clone().unwrap_or_default(),
                 description: self.description.to_string(),
+                max_value: self.limits.unwrap_or_default().max,
+                min_value: self.limits.unwrap_or_default().min,
                 name: self.name.to_string(),
                 required: self.required,
                 ..Default::default()
@@ -83,33 +96,21 @@ impl<D> CommandArgument<D> {
     }
 }
 
-impl<D>
-    From<(
-        &'static str,
-        &'static str,
-        bool,
-        CommandOptionType,
-        Box<dyn Fn() -> Option<Vec<CommandOptionChoice>> + Send + Sync>,
-        Option<AutocompleteHook<D>>,
-    )> for CommandArgument<D>
-{
-    fn from(
-        (name, description, required, kind, fun, autocomplete): (
-            &'static str,
-            &'static str,
-            bool,
-            CommandOptionType,
-            Box<dyn Fn() -> Option<Vec<CommandOptionChoice>> + Send + Sync>,
-            Option<AutocompleteHook<D>>,
-        ),
-    ) -> Self {
+impl<D: Send + Sync> CommandArgument<D> {
+    pub fn new<T: Parse<D>>(
+        name: &'static str,
+        description: &'static str,
+        autocomplete: Option<AutocompleteHook<D>>
+    ) -> Self
+    {
         Self {
             name,
             description,
-            required,
-            kind,
-            choices_fn: fun,
-            autocomplete,
+            required: T::required(),
+            kind: T::kind(),
+            choices: T::choices(),
+            limits: T::limits(),
+            autocomplete
         }
     }
 }

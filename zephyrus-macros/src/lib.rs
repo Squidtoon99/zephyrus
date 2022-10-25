@@ -9,7 +9,7 @@ mod autocomplete;
 mod before;
 mod command;
 mod futurize;
-mod options;
+mod details;
 mod parse;
 mod util;
 
@@ -83,6 +83,11 @@ pub fn after(_: TokenStream, input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn before(_: TokenStream, input: TokenStream) -> TokenStream {
     extract(before::before(input.into()))
+}
+
+#[proc_macro_attribute]
+pub fn check(attrs: TokenStream, input: TokenStream) -> TokenStream {
+    before(attrs, input)
 }
 
 /// Prepares the function to be used to autocomplete command arguments.

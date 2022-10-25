@@ -8,9 +8,9 @@ pub mod framework;
 pub mod group;
 pub mod hook;
 pub mod iter;
-pub mod message;
 pub mod parse;
-pub mod waiter;
+pub mod range;
+mod waiter;
 
 pub use zephyrus_macros as macros;
 
@@ -19,12 +19,13 @@ type BoxFuture<'a, T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + 
 /// Useful exports to get started quickly
 pub mod prelude {
     pub use crate::{
+        argument::ArgumentLimits,
         builder::{FrameworkBuilder, WrappedClient},
         command::CommandResult,
-        context::{AutocompleteContext, SlashContext},
+        context::{AutocompleteContext, Focused, SlashContext},
         framework::Framework,
         parse::{Parse, ParseError},
-        waiter::WaiterReceiver,
+        range::Range,
     };
     pub use async_trait::async_trait;
     pub use zephyrus_macros::*;
@@ -44,13 +45,12 @@ pub mod twilight_exports {
             },
             interaction::{
                 application_command::{
-                    ApplicationCommand, CommandData, CommandDataOption, CommandOptionValue,
+                    CommandData, CommandDataOption, CommandOptionValue,
                 },
-                application_command_autocomplete::{
-                    ApplicationCommandAutocomplete, ApplicationCommandAutocompleteDataOptionType,
-                },
-                message_component::MessageComponentInteraction,
+                message_component::MessageComponentInteractionData,
                 Interaction,
+                InteractionType,
+                InteractionData
             },
         },
         channel::Message,

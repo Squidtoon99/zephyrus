@@ -1,192 +1,233 @@
 use crate::prelude::*;
 use crate::twilight_exports::*;
 
+const NUMBER_MAX_VALUE: i64 = 9007199254740991;
+
+pub(crate) fn error(type_name: &str, required: bool, why: &str) -> ParseError {
+    ParseError::Parsing {
+        argument_name: String::new(),
+        required,
+        type_: type_name.to_string(),
+        error: why.to_string()
+    }
+}
+
 #[async_trait]
-impl<T: Send + Sync + 'static> Parse<T> for String {
+impl<T: Send + Sync> Parse<T> for String {
     async fn parse(
         _: &WrappedClient,
         _: &T,
         value: Option<&CommandOptionValue>,
     ) -> Result<Self, ParseError> {
-        if let Some(kind) = value {
-            if let CommandOptionValue::String(s) = kind {
-                return Ok(s.to_owned());
-            }
+        if let Some(CommandOptionValue::String(s)) = value {
+            return Ok(s.to_owned());
         }
-        Err("String expected".into())
+        Err(error("String", true, "String expected"))
     }
 
-    fn option_type() -> CommandOptionType {
+    fn kind() -> CommandOptionType {
         CommandOptionType::String
     }
 }
 
 #[async_trait]
-impl<T: Send + Sync + 'static> Parse<T> for i64 {
+impl<T: Send + Sync> Parse<T> for i64 {
     async fn parse(
         _: &WrappedClient,
         _: &T,
         value: Option<&CommandOptionValue>,
     ) -> Result<Self, ParseError> {
-        if let Some(kind) = value {
-            if let CommandOptionValue::Integer(i) = kind {
-                return Ok(*i);
-            }
+        if let Some(CommandOptionValue::Integer(i)) = value {
+            return Ok(*i);
         }
-        Err("Integer expected".into())
+        Err(error("i64", true, "Integer expected"))
     }
 
-    fn option_type() -> CommandOptionType {
+    fn kind() -> CommandOptionType {
         CommandOptionType::Integer
     }
 }
 
 #[async_trait]
-impl<T: Send + Sync + 'static> Parse<T> for u64 {
+impl<T: Send + Sync> Parse<T> for u64 {
     async fn parse(
         _: &WrappedClient,
         _: &T,
         value: Option<&CommandOptionValue>,
     ) -> Result<Self, ParseError> {
-        if let Some(kind) = value {
-            if let CommandOptionValue::Integer(i) = kind {
-                return Ok(*i as u64);
+        if let Some(CommandOptionValue::Integer(i)) = value {
+            if *i < 0 {
+                return Err(error("u64", true, "Input out of range"))
             }
+            return Ok(*i as u64);
         }
-        Err("Integer expected".into())
+        Err(error("Integer", true, "Integer expected"))
     }
 
-    fn option_type() -> CommandOptionType {
+    fn kind() -> CommandOptionType {
         CommandOptionType::Integer
+    }
+
+    fn limits() -> Option<ArgumentLimits> {
+        use twilight_model::application::command::CommandOptionValue;
+        Some(ArgumentLimits {
+            min: Some(CommandOptionValue::Integer(0)),
+            max: None
+        })
     }
 }
 
 #[async_trait]
-impl<T: Send + Sync + 'static> Parse<T> for f64 {
+impl<T: Send + Sync> Parse<T> for f64 {
     async fn parse(
         _: &WrappedClient,
         _: &T,
         value: Option<&CommandOptionValue>,
     ) -> Result<Self, ParseError> {
-        if let Some(kind) = value {
-            if let CommandOptionValue::Number(i) = kind {
-                return Ok(i.0);
-            }
+        if let Some(CommandOptionValue::Number(i)) = value {
+            return Ok(*i);
         }
-        Err("Number expected".into())
+        Err(error("f64", true, "Number expected"))
     }
 
-    fn option_type() -> CommandOptionType {
+    fn kind() -> CommandOptionType {
         CommandOptionType::Number
     }
+
+    fn limits() -> Option<ArgumentLimits> {
+        use twilight_model::application::command::CommandOptionValue;
+        Some(ArgumentLimits {
+            min: Some(CommandOptionValue::Number(f64::MIN)),
+            max: Some(CommandOptionValue::Number(f64::MAX))
+        })
+    }
 }
 
 #[async_trait]
-impl<T: Send + Sync + 'static> Parse<T> for bool {
+impl<T: Send + Sync> Parse<T> for f32 {
     async fn parse(
         _: &WrappedClient,
         _: &T,
         value: Option<&CommandOptionValue>,
     ) -> Result<Self, ParseError> {
-        if let Some(kind) = value {
-            if let CommandOptionValue::Boolean(i) = kind {
-                return Ok(*i);
+        if let Some(CommandOptionValue::Number(i)) = value {
+            if *i > f32::MAX as f64 || *i < f32::MIN as f64 {
+                return Err(error("f32", true, "Input out of range"))
             }
+            return Ok(*i as f32);
         }
-        Err("Boolean expected".into())
+        Err(error("f32", true, "Number expected"))
     }
 
-    fn option_type() -> CommandOptionType {
+    fn kind() -> CommandOptionType {
+        CommandOptionType::Number
+    }
+
+    fn limits() -> Option<ArgumentLimits> {
+        use twilight_model::application::command::CommandOptionValue;
+        Some(ArgumentLimits {
+            min: Some(CommandOptionValue::Number(f32::MIN as f64)),
+            max: Some(CommandOptionValue::Number(f32::MAX as f64))
+        })
+    }
+}
+
+#[async_trait]
+impl<T: Send + Sync> Parse<T> for bool {
+    async fn parse(
+        _: &WrappedClient,
+        _: &T,
+        value: Option<&CommandOptionValue>,
+    ) -> Result<Self, ParseError> {
+        if let Some(CommandOptionValue::Boolean(i)) = value {
+            return Ok(*i);
+        }
+        Err(error("Boolean", true, "Boolean expected"))
+    }
+
+    fn kind() -> CommandOptionType {
         CommandOptionType::Boolean
     }
 }
 
 #[async_trait]
-impl<T: Send + Sync + 'static> Parse<T> for Id<ChannelMarker> {
+impl<T: Send + Sync> Parse<T> for Id<ChannelMarker> {
     async fn parse(
         _: &WrappedClient,
         _: &T,
         value: Option<&CommandOptionValue>,
     ) -> Result<Self, ParseError> {
-        if let Some(kind) = value {
-            if let CommandOptionValue::Channel(channel) = kind {
-                return Ok(*channel);
-            }
+        if let Some(CommandOptionValue::Channel(channel)) = value {
+            return Ok(*channel);
         }
 
-        Err("Channel expected".into())
+        Err(error("Channel id", true, "Channel expected"))
     }
 
-    fn option_type() -> CommandOptionType {
+    fn kind() -> CommandOptionType {
         CommandOptionType::Channel
     }
 }
 
 #[async_trait]
-impl<T: Send + Sync + 'static> Parse<T> for Id<UserMarker> {
+impl<T: Send + Sync> Parse<T> for Id<UserMarker> {
     async fn parse(
         _: &WrappedClient,
         _: &T,
         value: Option<&CommandOptionValue>,
     ) -> Result<Self, ParseError> {
-        if let Some(kind) = value {
-            if let CommandOptionValue::User(user) = kind {
-                return Ok(*user);
-            }
+        if let Some(CommandOptionValue::User(user)) = value {
+            return Ok(*user);
         }
 
-        Err("User expected".into())
+        Err(error("User id", true, "User expected"))
     }
 
-    fn option_type() -> CommandOptionType {
+    fn kind() -> CommandOptionType {
         CommandOptionType::User
     }
 }
 
 #[async_trait]
-impl<T: Send + Sync + 'static> Parse<T> for Id<RoleMarker> {
+impl<T: Send + Sync> Parse<T> for Id<RoleMarker> {
     async fn parse(
         _: &WrappedClient,
         _: &T,
         value: Option<&CommandOptionValue>,
     ) -> Result<Self, ParseError> {
-        if let Some(kind) = value {
-            if let CommandOptionValue::Role(role) = kind {
-                return Ok(*role);
-            }
+        if let Some(CommandOptionValue::Role(role)) = value {
+            return Ok(*role);
         }
 
-        Err("Role expected".into())
+        Err(error("Role id", true, "Role expected"))
     }
 
-    fn option_type() -> CommandOptionType {
+    fn kind() -> CommandOptionType {
         CommandOptionType::Role
     }
 }
 
 #[async_trait]
-impl<T: Send + Sync + 'static> Parse<T> for Id<GenericMarker> {
+impl<T: Send + Sync> Parse<T> for Id<GenericMarker> {
     async fn parse(
         _: &WrappedClient,
         _: &T,
         value: Option<&CommandOptionValue>,
     ) -> Result<Self, ParseError> {
-        if let Some(kind) = value {
-            if let CommandOptionValue::Mentionable(id) = kind {
-                return Ok(*id);
-            }
+        if let Some(CommandOptionValue::Mentionable(id)) = value {
+            return Ok(*id);
         }
 
-        Err("Mentionable expected".into())
+        Err(error("Id", true, "Mentionable expected"))
     }
 
-    fn option_type() -> CommandOptionType {
+    fn kind() -> CommandOptionType {
         CommandOptionType::Mentionable
     }
 }
 
 #[async_trait]
-impl<T: Parse<E>, E: Send + Sync + 'static> Parse<E> for Option<T> {
+impl<T: Parse<E>, E: Send + Sync> Parse<E> for Option<T> {
     async fn parse(
         http_client: &WrappedClient,
         data: &E,
@@ -194,8 +235,12 @@ impl<T: Parse<E>, E: Send + Sync + 'static> Parse<E> for Option<T> {
     ) -> Result<Self, ParseError> {
         match T::parse(http_client, data, value).await {
             Ok(parsed) => Ok(Some(parsed)),
-            Err(why) => {
+            Err(mut why) => {
                 if value.is_some() {
+                    if let ParseError::Parsing {required, ..} = &mut why {
+                        *required = false;
+                    }
+
                     Err(why)
                 } else {
                     Ok(None)
@@ -204,12 +249,20 @@ impl<T: Parse<E>, E: Send + Sync + 'static> Parse<E> for Option<T> {
         }
     }
 
-    fn is_required() -> bool {
+    fn kind() -> CommandOptionType {
+        T::kind()
+    }
+
+    fn required() -> bool {
         false
     }
 
-    fn option_type() -> CommandOptionType {
-        T::option_type()
+    fn choices() -> Option<Vec<CommandOptionChoice>> {
+        T::choices()
+    }
+
+    fn limits() -> Option<ArgumentLimits> {
+        T::limits()
     }
 }
 
@@ -218,7 +271,7 @@ impl<T, E, C> Parse<C> for Result<T, E>
 where
     T: Parse<C>,
     E: From<ParseError>,
-    C: Send + Sync + 'static,
+    C: Send + Sync,
 {
     async fn parse(
         http_client: &WrappedClient,
@@ -229,12 +282,20 @@ where
         Ok(T::parse(http_client, data, value).await.map_err(From::from))
     }
 
-    fn is_required() -> bool {
-        T::is_required()
+    fn kind() -> CommandOptionType {
+        T::kind()
     }
 
-    fn option_type() -> CommandOptionType {
-        T::option_type()
+    fn required() -> bool {
+        T::required()
+    }
+
+    fn choices() -> Option<Vec<CommandOptionChoice>> {
+        T::choices()
+    }
+
+    fn limits() -> Option<ArgumentLimits> {
+        T::limits()
     }
 }
 
@@ -242,7 +303,7 @@ macro_rules! impl_derived_parse {
     ($([$($derived:ty),+] from $prim:ty),* $(,)?) => {
         $($(
             #[async_trait]
-            impl<T: Send + Sync + 'static> Parse<T> for $derived {
+            impl<T: Send + Sync> Parse<T> for $derived {
                 async fn parse(
                     http_client: &WrappedClient,
                     data: &T,
@@ -251,7 +312,9 @@ macro_rules! impl_derived_parse {
                     let p = <$prim>::parse(http_client, data, value).await?;
 
                     if p > <$derived>::MAX as $prim {
-                        Err(
+                        Err(error(
+                            stringify!($derived),
+                            true,
                             concat!(
                                 "Failed to parse to ",
                                 stringify!($derived),
@@ -259,10 +322,12 @@ macro_rules! impl_derived_parse {
                                 stringify!($derived),
                                 "'s ",
                                 "range of values"
-                            ).into()
-                        )
+                            )
+                        ))
                     } else if p < <$derived>::MIN as $prim {
-                        Err(
+                        Err(error(
+                            stringify!($derived),
+                            true,
                             concat!(
                                 "Failed to parse to ",
                                 stringify!($derived),
@@ -270,15 +335,29 @@ macro_rules! impl_derived_parse {
                                 stringify!($derived),
                                 "'s ",
                                 "range of values"
-                            ).into()
-                        )
+                            )
+                        ))
                     } else {
                         Ok(p as $derived)
                     }
                 }
 
-                fn option_type() -> CommandOptionType {
-                    <$prim as Parse<T>>::option_type()
+                fn kind() -> CommandOptionType {
+                    <$prim as Parse<T>>::kind()
+                }
+
+                fn limits() -> Option<ArgumentLimits> {
+                    use twilight_model::application::command::CommandOptionValue;
+                    Some(ArgumentLimits {
+                        min: Some(CommandOptionValue::Integer(<$derived>::MIN as i64)),
+                        max: Some(CommandOptionValue::Integer({
+                            if <$derived>::MAX as i64 > NUMBER_MAX_VALUE {
+                                NUMBER_MAX_VALUE
+                            } else {
+                                <$derived>::MAX as i64
+                            }
+                        }))
+                    })
                 }
             }
         )*)*
@@ -288,5 +367,4 @@ macro_rules! impl_derived_parse {
 impl_derived_parse! {
     [i8, i16, i32, isize] from i64,
     [u8, u16, u32, usize] from u64,
-    [f32] from f64,
 }

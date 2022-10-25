@@ -1,26 +1,41 @@
+use parking_lot::Mutex;
 use crate::{
     builder::WrappedClient,
     command::CommandResult,
-    message::Message,
     twilight_exports::*,
-    waiter::{WaiterReceiver, WaiterSender},
+    waiter::{InteractionWaiter, WaiterWaker}
 };
-use parking_lot::Mutex;
+use crate::framework::Framework;
+
+use crate::iter::DataIterator;
+use crate::parse::{Parse, ParseError};
+use crate::waiter::new_pair;
+
+/// The value the user is providing to the argument.
+#[derive(Debug, Clone)]
+pub struct Focused {
+    pub input: String,
+    pub kind: CommandOptionType,
+}
 
 /// Context given to all functions used to autocomplete arguments.
 pub struct AutocompleteContext<'a, D> {
+    /// The http client used by the framework.
     pub http_client: &'a WrappedClient,
+    /// The data shared across the framework.
     pub data: &'a D,
-    pub user_input: Option<String>,
-    pub interaction: &'a mut ApplicationCommandAutocomplete,
+    /// The user input.
+    pub user_input: Focused,
+    /// The interaction itself.
+    pub interaction: &'a mut Interaction,
 }
 
 impl<'a, D> AutocompleteContext<'a, D> {
     pub(crate) fn new(
         http_client: &'a WrappedClient,
         data: &'a D,
-        user_input: Option<String>,
-        interaction: &'a mut ApplicationCommandAutocomplete,
+        user_input: Focused,
+        interaction: &'a mut Interaction,
     ) -> Self {
         Self {
             http_client,
@@ -48,13 +63,13 @@ pub struct SlashContext<'a, D> {
     /// The data shared across the framework.
     pub data: &'a D,
     /// The interaction itself.
-    pub interaction: ApplicationCommand,
+    pub interaction: Interaction,
 }
 
 impl<'a, D> Clone for SlashContext<'a, D> {
     fn clone(&self) -> Self {
         SlashContext {
-            http_client: &self.http_client,
+            http_client: self.http_client,
             application_id: self.application_id,
             interaction_client: self.http_client.inner().interaction(self.application_id),
             data: &self.data,
@@ -69,7 +84,7 @@ impl<'a, D> SlashContext<'a, D> {
         http_client: &'a WrappedClient,
         application_id: Id<ApplicationMarker>,
         data: &'a D,
-        interaction: ApplicationCommand,
+        interaction: Interaction,
     ) -> Self {
         let interaction_client = http_client.inner().interaction(application_id);
         Self {

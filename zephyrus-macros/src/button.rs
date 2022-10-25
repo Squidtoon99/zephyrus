@@ -1,11 +1,10 @@
 use proc_macro2::{Ident, TokenStream as TokenStream2};
 use syn::{parse2, spanned::Spanned, Block, Error, ItemFn, Result, Signature, Type};
-use crate::{argument::Argument, details::CommandDetails, util};
 
 /// The implementation of the command macro, this macro modifies the provided function body to allow
 /// parsing all function arguments and wraps it into a command struct, registering all command names,
 /// types and descriptions.
-pub fn command(macro_attrs: TokenStream2, input: TokenStream2) -> Result<TokenStream2> {
+pub fn button(macro_attrs: TokenStream2, input: TokenStream2) -> Result<TokenStream2> {
     let fun = parse2::<ItemFn>(input)?;
 
     let ItemFn {
@@ -42,17 +41,17 @@ pub fn command(macro_attrs: TokenStream2, input: TokenStream2) -> Result<TokenSt
     let fn_ident = quote::format_ident!("_{}", &sig.ident);
     sig.ident = fn_ident.clone();
 
-    let (context_ident, context_type) = util::get_context_type_and_ident(&sig)?;
+    let (context_ident, context_type) = crate::util::get_context_type_and_ident(&sig)?;
     // Get the futurize macro so we can fit the function into a normal fn pointer
-    let extract_output = util::get_futurize_macro();
-    let command_path = util::get_command_path();
+    let extract_output = crate::util::get_futurize_macro();
+    let button_path = crate::util::get_button_path();
 
     let args = parse_arguments(&mut sig, &mut block, context_ident, &context_type)?;
-    let opts = CommandDetails::parse(&mut attrs)?;
+    let opts = crate::options::CommandDetails::parse(&mut attrs)?;
 
     Ok(quote::quote! {
-        pub fn #ident() -> #command_path<#context_type> {
-            #command_path::new(#fn_ident)
+        pub fn #ident() -> #button_path<#context_type> {
+            #button_path::new(#fn_ident)
                 .name(#name)
                 #opts
                 #(#args)*
@@ -70,7 +69,9 @@ pub fn parse_arguments<'a>(
     block: &mut Block,
     ctx_ident: Ident,
     ctx_type: &'a Type,
-) -> Result<Vec<Argument<'a>>> {
+) -> Result<Vec<crate::argument::Argument<'a>>> {
+    use crate::argument::Argument;
+
     let mut arguments = Vec::new();
     while sig.inputs.len() > 1 {
         arguments.push(Argument::new(
@@ -95,6 +96,7 @@ pub fn parse_arguments<'a>(
             })
             .collect::<Vec<_>>(),
     );
+    let parse_trait = crate::util::get_parse_trait();
 
     // The original block of the function
     let b = &block;
@@ -102,20 +104,13 @@ pub fn parse_arguments<'a>(
     // Modify the block to parse arguments
     *block = parse2(quote::quote! {{
         let (#(#names),*) = {
-            let data = match #ctx_ident.interaction.data.as_ref().unwrap() {
-                ::zephyrus::twilight_exports::InteractionData::ApplicationCommand(data) => data,
-                _ => unreachable!()
-            };
             #[allow(unused_mut)]
             let mut __options = ::zephyrus::iter::DataIterator::new(
-                data
-                .options
-                .iter()
-                .collect::<Vec<_>>()
+                vec![]
             );
 
             #(let #names: #types =
-                #ctx_ident.named_parse(#renames, &mut __options).await?;)*
+                #parse_trait::<#ctx_type>::named_parse(#renames, &#ctx_ident.http_client, &#ctx_ident.data, &mut __options).await?;)*
 
             if __options.len() > 0 {
                 return Err(

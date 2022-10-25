@@ -1,22 +1,41 @@
-use crate::context::AutocompleteContext;
 use crate::{
     argument::CommandArgument,
     builder::{FrameworkBuilder, WrappedClient},
     command::{Command, CommandMap},
-    context::SlashContext,
+    context::{AutocompleteContext, Focused, SlashContext},
     group::{GroupParent, ParentGroupMap, ParentType},
     hook::{AfterHook, BeforeHook},
     twilight_exports::{
-        ApplicationCommand, ApplicationCommandAutocomplete,
-        ApplicationCommandAutocompleteDataOptionType, ApplicationMarker, Client,
-        Command as TwilightCommand, CommandDataOption, CommandOption, CommandOptionType,
-        CommandOptionValue, GuildMarker, Id, Interaction, InteractionClient, InteractionResponse,
+        ApplicationMarker, Client,
+        Command as TwilightCommand, CommandData, CommandDataOption, CommandOption, CommandOptionType,
+        CommandOptionValue, GuildMarker, Id, Interaction, InteractionData, InteractionType, InteractionClient, InteractionResponse,
         InteractionResponseType, OptionsCommandOptionData,
     },
-    waiter::WaiterSender,
+    waiter::WaiterWaker
 };
-use parking_lot::Mutex;
 use tracing::debug;
+use parking_lot::Mutex;
+
+macro_rules! extract {
+    ($expr:expr => $variant:ident) => {
+        match $expr {
+            InteractionData::$variant(inner) => inner,
+            _ => unreachable!()
+        }
+    };
+}
+
+macro_rules! focused {
+    ($($tt:tt)*) => {
+        match $($tt)* {
+            CommandOptionValue::Focused(input, kind) => Focused {
+                input: input.clone(),
+                kind: *kind
+            },
+            _ => return None
+        }
+    };
+}
 
 /// The framework used to dispatch slash commands.
 pub struct Framework<D> {
@@ -34,8 +53,7 @@ pub struct Framework<D> {
     pub before: Option<BeforeHook<D>>,
     /// A hook executed after command's execution.
     pub after: Option<AfterHook<D>>,
-    /// A vector of waiters corresponding to different commands.
-    waiters: Mutex<Vec<WaiterSender>>,
+    pub waiters: Mutex<Vec<WaiterWaker<D>>>
 }
 
 impl<D> Framework<D> {
@@ -49,7 +67,7 @@ impl<D> Framework<D> {
             groups: builder.groups,
             before: builder.before,
             after: builder.after,
-            waiters: Mutex::new(Vec::new()),
+            waiters: Mutex::new(Vec::new())
         }
     }
 
@@ -76,49 +94,43 @@ impl<D> Framework<D> {
 
     /// Processes the given interaction, dispatching commands or waking waiters if necessary.
     pub async fn process(&self, interaction: Interaction) {
-        match interaction {
-            Interaction::ApplicationCommand(cmd) => self.try_execute(*cmd).await,
-            Interaction::MessageComponent(component) => {
+        match interaction.kind {
+            InteractionType::ApplicationCommand => self.try_execute(interaction).await,
+            InteractionType::ApplicationCommandAutocomplete => self.try_autocomplete(interaction).await,
+            InteractionType::MessageComponent => {
                 let mut lock = self.waiters.lock();
-                let index = lock.iter().position(|sender| sender.check(&component));
-
-                if let Some(index) = index {
-                    let sender = lock.remove(index);
-                    sender.send(*component);
-                    return;
+                if let Some(position) = lock.iter().position(|waker| waker.check(self, &interaction)) {
+                    lock.remove(position).wake(interaction);
                 }
             }
-            Interaction::ApplicationCommandAutocomplete(autocomplete) => {
-                self.try_autocomplete(*autocomplete).await
-            }
-            _ => return,
+            _ => ()
         }
     }
 
     /// Tries to execute a command based on the given
     /// [ApplicationCommand](ApplicationCommand).
-    async fn try_execute(&self, mut interaction: ApplicationCommand) {
+    async fn try_execute(&self, mut interaction: Interaction) {
         if let Some(command) = self.get_command(&mut interaction) {
             self.execute(command, interaction).await;
         }
     }
 
-    async fn try_autocomplete(&self, mut autocomplete: ApplicationCommandAutocomplete) {
-        if let Some((argument, value)) = self.get_autocomplete_argument(&mut autocomplete) {
+    async fn try_autocomplete(&self, mut interaction: Interaction) {
+        if let Some((argument, value)) = self.get_autocomplete_argument(extract!(interaction.data.as_ref().unwrap() => ApplicationCommand)) {
             if let Some(fun) = &argument.autocomplete {
                 let context = AutocompleteContext::new(
                     &self.http_client,
                     &self.data,
                     value,
-                    &mut autocomplete,
+                    &mut interaction,
                 );
                 let data = (fun.0)(context).await;
 
                 let _ = self
                     .interaction_client()
                     .create_response(
-                        autocomplete.id,
-                        &autocomplete.token,
+                        interaction.id,
+                        &interaction.token,
                         &InteractionResponse {
                             kind: InteractionResponseType::ApplicationCommandAutocompleteResult,
                             data,
@@ -132,57 +144,53 @@ impl<D> Framework<D> {
 
     fn get_autocomplete_argument(
         &self,
-        autocomplete: &mut ApplicationCommandAutocomplete,
-    ) -> Option<(&CommandArgument<D>, Option<String>)> {
-        if autocomplete.data.options.len() > 0 {
-            let mut inner = autocomplete.data.options.remove(0);
-            match inner.kind {
-                ApplicationCommandAutocompleteDataOptionType::SubCommandGroup => {
-                    if inner.options.len() > 0 {
+        data: &CommandData,
+    ) -> Option<(&CommandArgument<D>, Focused)> {
+        if !data.options.is_empty() {
+            let outer = data.options.get(0)?;
+            match &outer.value {
+                CommandOptionValue::SubCommandGroup(sc_group) => {
+                    if !sc_group.is_empty() {
                         let map = self
                             .groups
-                            .get(autocomplete.data.name.as_str())?
+                            .get(data.name.as_str())?
                             .kind
                             .as_group()?;
-                        let group = map.get(inner.name.as_str())?;
-                        let mut inner = inner.options.remove(0);
-                        if let ApplicationCommandAutocompleteDataOptionType::SubCommand = inner.kind
-                        {
-                            if inner.options.len() > 0 {
-                                let command = group.subcommands.get(inner.name.as_str())?;
-                                let inner = inner.options.remove(0);
-                                let position = command
-                                    .fun_arguments
-                                    .iter()
-                                    .position(|arg| arg.name == &inner.name)?;
-                                return Some((command.fun_arguments.get(position)?, inner.value));
-                            }
+                        let group = map.get(outer.name.as_str())?;
+                        let next = sc_group.get(0)?;
+                        if let CommandOptionValue::SubCommand(options) = &next.value {
+                            let focused = self.get_focus(options)?;
+                            let command = group.subcommands.get(next.name.as_str())?;
+                            let position = command
+                                .arguments
+                                .iter()
+                                .position(|arg| arg.name == focused.name)?;
+                            return Some((command.arguments.get(position)?, focused!(&focused.value)));
                         }
                     }
                 }
-                ApplicationCommandAutocompleteDataOptionType::SubCommand => {
-                    if inner.options.len() > 0 {
-                        let subcommands = self
-                            .groups
-                            .get(autocomplete.data.name.as_str())?
+                CommandOptionValue::SubCommand(sc) => {
+                    if !sc.is_empty() {
+                        let group = self.groups.get(data.name.as_str())?
                             .kind
                             .as_simple()?;
-                        let command = subcommands.get(inner.name.as_str())?;
-                        let inner = inner.options.remove(0);
+                        let focused = self.get_focus(sc)?;
+                        let command = group.get(outer.name.as_str())?;
                         let position = command
-                            .fun_arguments
+                            .arguments
                             .iter()
-                            .position(|arg| arg.name == &inner.name)?;
-                        return Some((command.fun_arguments.get(position)?, inner.value));
+                            .position(|arg| arg.name == focused.name)?;
+                        return Some((command.arguments.get(position)?, focused!(&focused.value)));
                     }
                 }
                 _ => {
-                    let command = self.commands.get(autocomplete.data.name.as_str())?;
+                    let focused = self.get_focus(&data.options)?;
+                    let command = self.commands.get(data.name.as_str())?;
                     let position = command
-                        .fun_arguments
+                        .arguments
                         .iter()
-                        .position(|arg| arg.name == &inner.name)?;
-                    return Some((command.fun_arguments.get(position)?, inner.value));
+                        .position(|arg| arg.name == focused.name)?;
+                    return Some((command.arguments.get(position)?, focused!(&focused.value)));
                 }
             }
         }
@@ -190,12 +198,23 @@ impl<D> Framework<D> {
         None
     }
 
+    fn get_focus<'a>(&self, data: &'a Vec<CommandDataOption>) -> Option<&'a CommandDataOption> {
+        for item in data {
+            if let CommandOptionValue::Focused(..) = &item.value {
+                return Some(item);
+            }
+        }
+        None
+    }
+
     /// Gets the command matching the given
     /// [ApplicationCommand](ApplicationCommand),
     /// returning `None` if no command matches the given interaction.
-    fn get_command(&self, interaction: &mut ApplicationCommand) -> Option<&Command<D>> {
-        if let Some(next) = self.get_next(&mut interaction.data.options) {
-            let group = self.groups.get(&*interaction.data.name)?;
+    fn get_command(&self, interaction: &mut Interaction) -> Option<&Command<D>> {
+        let data = interaction.data.as_mut()?;
+        let interaction_data = extract!(data => ApplicationCommand);
+        if let Some(next) = self.get_next(&mut interaction_data.options) {
+            let group = self.groups.get(&*interaction_data.name)?;
             match next.value.kind() {
                 CommandOptionType::SubCommand => {
                     let subcommands = group.kind.as_simple()?;
@@ -203,7 +222,7 @@ impl<D> Framework<D> {
                         CommandOptionValue::SubCommand(s) => s,
                         _ => unreachable!(),
                     };
-                    interaction.data.options = options;
+                    interaction_data.options = options;
                     subcommands.get(&*next.name)
                 }
                 CommandOptionType::SubCommandGroup => {
@@ -218,20 +237,20 @@ impl<D> Framework<D> {
                         CommandOptionValue::SubCommand(s) => s,
                         _ => unreachable!(),
                     };
-                    interaction.data.options = options;
+                    interaction_data.options = options;
                     group.subcommands.get(&*subcommand.name)
                 }
                 _ => None,
             }
         } else {
-            self.commands.get(&*interaction.data.name)
+            self.commands.get(&*interaction_data.name)
         }
     }
 
     /// Gets the next [option](CommandDataOption)
     /// only if it corresponds to a subcommand or a subcommand group.
     fn get_next(&self, interaction: &mut Vec<CommandDataOption>) -> Option<CommandDataOption> {
-        if interaction.len() > 0
+        if !interaction.is_empty()
             && (interaction[0].value.kind() == CommandOptionType::SubCommand
                 || interaction[0].value.kind() == CommandOptionType::SubCommandGroup)
         {
@@ -242,7 +261,7 @@ impl<D> Framework<D> {
     }
 
     /// Executes the given [command](crate::command::Command) and the hooks.
-    async fn execute(&self, cmd: &Command<D>, interaction: ApplicationCommand) {
+    async fn execute(&self, cmd: &Command<D>, interaction: Interaction) {
         let context = SlashContext::new(
             &self.http_client,
             self.application_id,
@@ -265,16 +284,17 @@ impl<D> Framework<D> {
         }
     }
 
+    /// Registers the commands provided to the framework in the specified guild.
     pub async fn register_guild_commands(
         &self,
         guild_id: Id<GuildMarker>,
     ) -> Result<Vec<TwilightCommand>, Box<dyn std::error::Error + Send + Sync>> {
         let mut commands = Vec::new();
 
-        for (_, cmd) in &self.commands {
+        for cmd in self.commands.values() {
             let mut options = Vec::new();
 
-            for i in &cmd.fun_arguments {
+            for i in &cmd.arguments {
                 options.push(i.as_option());
             }
             let interaction_client = self.interaction_client();
@@ -290,7 +310,7 @@ impl<D> Framework<D> {
             commands.push(command.exec().await?.model().await?);
         }
 
-        for (_, group) in &self.groups {
+        for group in self.groups.values() {
             let options = self.create_group(group);
             let interaction_client = self.interaction_client();
             let mut command = interaction_client
@@ -308,15 +328,16 @@ impl<D> Framework<D> {
         Ok(commands)
     }
 
+    /// Registers the commands provided to the framework globally.
     pub async fn register_global_commands(
         &self,
     ) -> Result<Vec<TwilightCommand>, Box<dyn std::error::Error + Send + Sync>> {
         let mut commands = Vec::new();
 
-        for (_, cmd) in &self.commands {
+        for cmd in self.commands.values() {
             let mut options = Vec::new();
 
-            for i in &cmd.fun_arguments {
+            for i in &cmd.arguments {
                 options.push(i.as_option());
             }
             let interaction_client = self.interaction_client();
@@ -332,7 +353,7 @@ impl<D> Framework<D> {
             commands.push(command.exec().await?.model().await?);
         }
 
-        for (_, group) in &self.groups {
+        for group in self.groups.values() {
             let options = self.create_group(group);
             let interaction_client = self.interaction_client();
             let mut command = interaction_client
@@ -365,11 +386,11 @@ impl<D> Framework<D> {
 
         if let ParentType::Group(map) = &parent.kind {
             let mut subgroups = Vec::new();
-            for (_, group) in map {
+            for group in map.values() {
                 debug!("Registering subgroup {} of {}", group.name, parent.name);
 
                 let mut subcommands = Vec::new();
-                for (_, sub) in &group.subcommands {
+                for sub in group.subcommands.values() {
                     subcommands.push(self.create_subcommand(sub))
                 }
 
@@ -383,7 +404,7 @@ impl<D> Framework<D> {
             subgroups
         } else if let ParentType::Simple(map) = &parent.kind {
             let mut subcommands = Vec::new();
-            for (_, sub) in map {
+            for sub in map.values() {
                 subcommands.push(self.create_subcommand(sub));
             }
 
@@ -400,7 +421,7 @@ impl<D> Framework<D> {
         CommandOption::SubCommand(OptionsCommandOptionData {
             name: cmd.name.to_string(),
             description: cmd.description.to_string(),
-            options: self.arg_options(&cmd.fun_arguments),
+            options: self.arg_options(&cmd.arguments),
             ..Default::default()
         })
     }

@@ -82,6 +82,7 @@ pub fn parse(input: TokenStream2) -> Result<TokenStream2> {
 
     Ok(quote::quote! {
         const _: () = {
+            #[automatically_derived]
             #[::zephyrus::prelude::async_trait]
             impl<T: Send + Sync + 'static> ::zephyrus::prelude::Parse<T> for #enum_name {
                 async fn parse(
@@ -93,23 +94,24 @@ pub fn parse(input: TokenStream2) -> Result<TokenStream2> {
                     let num = usize::parse(http_client, data, value).await?;
                     match num {
                         #parse_stream
-                        _ => return Err(::zephyrus::prelude::ParseError::StructureMismatch(
-                            "Unrecognized option".to_string())
+                        _ => return Err(::zephyrus::parse::ParseError::Parsing {
+                                argument_name: String::new(),
+                                required: true,
+                                type_: String::from(stringify!(#enum_name)),
+                                error: String::from("Unrecognized option")
+                            }
                         )
                     }
                 }
-                fn option_type() -> ::zephyrus::twilight_exports::CommandOptionType {
+                fn kind() -> ::zephyrus::twilight_exports::CommandOptionType {
                     ::zephyrus::twilight_exports::CommandOptionType::Integer
                 }
-                fn add_choices()
-                -> Box<dyn Fn() -> Option<Vec<::zephyrus::twilight_exports::CommandOptionChoice>> + Send + Sync> {
-                    Box::new(|| {
-                        let mut choices = Vec::new();
+                fn choices() -> Option<Vec<::zephyrus::twilight_exports::CommandOptionChoice>> {
+                    let mut choices = Vec::new();
 
-                        #choice_stream;
+                    #choice_stream;
 
-                        Some(choices)
-                    })
+                    Some(choices)
                 }
             }
         };
